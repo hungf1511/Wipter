@@ -63,6 +63,7 @@ echo "Starting Wipter....."
 # Start openbox as a minimal window manager
 cd /root/wipter/
 /root/wipter/wipter-app &
+WIPTER_PID=$!
 
 if ! [ -f ~/.wipter-configured ]; then
     # Wait for the wipter window to be available
@@ -91,4 +92,4 @@ if ! [ -f ~/.wipter-configured ]; then
 
     touch ~/.wipter-configured
 fi
-
+wait $WIPTER_PID
