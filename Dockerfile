@@ -25,13 +25,10 @@ RUN mkdir -p /root/.local/share/keyrings /root/.cache
 
 # Create a virtual environment and install Python dependencies
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir websockify keyring
+    /opt/venv/bin/pip install --no-cache-dir keyring
 
 # Update CA certificates
 RUN update-ca-certificates
-
-# Copy noVNC files
-RUN git clone https://github.com/novnc/noVNC.git /noVNC
 
 # Install TurboVNC
 RUN wget -q -O- https://packagecloud.io/dcommander/turbovnc/gpgkey | gpg --dearmor > /etc/apt/trusted.gpg.d/TurboVNC.gpg && \
