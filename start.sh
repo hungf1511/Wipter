@@ -40,16 +40,12 @@ unset VNC_PASSWORD
 # Set VNC port from environment variable or default to 5900
 VNC_PORT=${VNC_PORT:-5900}
 
-# Set Websockify port from environment variable or default to 6080
-WEBSOCKIFY_PORT=${WEBSOCKIFY_PORT:-6080}
-
 # Start TurboVNC server and websockify based on WEB_ACCESS_ENABLED
 if [ "$WEB_ACCESS_ENABLED" == "true" ]; then
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
         echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
         exit 1
     }
-    /opt/venv/bin/websockify --web=/noVNC "${WEBSOCKIFY_PORT}" localhost:"${VNC_PORT}" &
 else
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
         echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
