@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:bullseye
 
 # Install essential packages, including full D-Bus, X11, keytar dependencies, and dos2unix
 RUN apt-get -y update && apt-get -y --no-install-recommends --no-install-suggests install \
