@@ -33,7 +33,7 @@ RUN update-ca-certificates
 # Install TurboVNC
 RUN wget -q -O- https://packagecloud.io/dcommander/turbovnc/gpgkey | gpg --dearmor > /etc/apt/trusted.gpg.d/TurboVNC.gpg && \
     wget -q -O /etc/apt/sources.list.d/turbovnc.list https://raw.githubusercontent.com/TurboVNC/repo/main/TurboVNC.list && \
-    apt-get -y update && apt-get -y install turbovnc libwebkit2gtk-4.1-0 && \
+    apt-get -y update && apt-get -y install turbovnc libwebkit2gtk-4.0-37 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Download the wipter package based on architecture
