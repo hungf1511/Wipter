@@ -15,24 +15,21 @@ fi
 eval "$(dbus-launch --sh-syntax)"
 
 # Unlock the GNOME Keyring daemon (non-interactively)
-# Replace 'mypassword' with a secure password or use an environment variable
 echo 'mypassword' | gnome-keyring-daemon --unlock --replace
 
 # Enable job control
 set -m
 
-# These files could be left-over if the container is not shut down cleanly. We just remove it since we should
-# only be here during container startup.
+# Clean up lock files
 rm -f /tmp/.X1-lock
-rm -r /tmp/.X11-unix
+rm -rf /tmp/.X11-unix
 
 # Set up the VNC password
 if [ -z "$VNC_PASSWORD" ]; then
-    echo "VNC_PASSWORD environment variable is not set. Using a random password. You"
-    echo "will not be able to access the VNC server."
+    echo "VNC_PASSWORD environment variable is not set. Using a random password."
     VNC_PASSWORD="$(tr -dc '[:alpha:]' < /dev/urandom | fold -w "${1:-8}" | head -n1)"
 fi
-mkdir ~/.vnc
+mkdir -p ~/.vnc
 echo -n "$VNC_PASSWORD" | /opt/TurboVNC/bin/vncpasswd -f > ~/.vnc/passwd
 chmod 400 ~/.vnc/passwd
 unset VNC_PASSWORD
@@ -43,7 +40,7 @@ VNC_PORT=${VNC_PORT:-5900}
 # Set Websockify port from environment variable or default to 6080
 WEBSOCKIFY_PORT=${WEBSOCKIFY_PORT:-6080}
 
-# Start TurboVNC server and websockify based on WEB_ACCESS_ENABLED
+# Start TurboVNC server and websockify
 if [ "$WEB_ACCESS_ENABLED" == "true" ]; then
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
         echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
@@ -60,7 +57,6 @@ fi
 export DISPLAY=:1
 
 echo "Starting Wipter....."
-# Start openbox as a minimal window manager
 cd /root/wipter/
 /root/wipter/wipter-app &
 
@@ -91,4 +87,46 @@ if ! [ -f ~/.wipter-configured ]; then
 
     touch ~/.wipter-configured
 fi
+
+################################################################################
+# AUTO-RESTART WIPTER MỖI 24H - VERSION FIXED (ĐÓNG GUI CŨ)
+################################################################################
+
+restart_wipter() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Restarting Wipter to clear memory..."
+    
+    # BƯỚC 1: Kill process wipter-app
+    echo "Killing wipter-app process..."
+    pkill -f "wipter-app"
+    
+    sleep 5
+    
+    # BƯỚC 2: Start wipter-app lại (GUI tự động mở, session tự động load)
+    echo "Starting wipter-app..."
+    cd /root/wipter/
+    /root/wipter/wipter-app &
+    
+    # BƯỚC 3: Đợi GUI mở xong
+    echo "Waiting for GUI to open..."
+    sleep 10
+    
+    # BƯỚC 4: Đóng GUI đi (như lúc auto-login, để không lag)
+    echo "Closing GUI..."
+    xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
+    
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully (process running, GUI closed, RAM cleared)"
+}
+
+# Run auto-restart every 24 hours in background
+(
+    while true; do
+        sleep 86400  # 24 hours
+        restart_wipter
+    done
+) &
+
+RESTART_PID=$!
+echo "✅ Auto-restart monitor started (PID: $RESTART_PID, interval: 24h)"
+
+# Bring wipter-app to foreground (keep container running)
 fg %/root/wipter/wipter-app
