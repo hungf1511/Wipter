@@ -59,6 +59,7 @@ EOF
 
   # Manual routing configuration
   echo "Configuring network routes to use proxy..."
+  ip route del default || true
   ip route add default dev tun0
   echo "Network routing configured."
 else
