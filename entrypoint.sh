@@ -18,7 +18,7 @@ fi
 if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
   echo "Proxy details found. Generating sing-box config..."
   AUTH_BLOCK=""
-  if [ -n "${PROXY_USER:-}" ]; then
+  if [ -n "${PROXY_USER:-}" ] && [ -n "${PROXY_PASS:-}" ]; then
     AUTH_BLOCK=$(printf ',\n      "username": "%s",\n      "password": "%s"' "$PROXY_USER" "${PROXY_PASS:-}")
   fi
 
