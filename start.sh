@@ -2,18 +2,27 @@
 
 # Check if WIPTER_EMAIL and WIPTER_PASSWORD are set
 if [ -z "$WIPTER_EMAIL" ]; then
-    echo "Error: WIPTER_EMAIL environment variable is not set." >&2
+    echo "Error: WIPTER_EMAIL environment variable is not set."
     exit 1
 fi
 
 if [ -z "$WIPTER_PASSWORD" ]; then
-    echo "Error: WIPTER_PASSWORD environment variable is not set." >&2
+    echo "Error: WIPTER_PASSWORD environment variable is not set."
     exit 1
 fi
 
-# Clean up any old VNC sessions and lock files
-/opt/TurboVNC/bin/vncserver -kill :1 >/dev/null 2>&1 || true
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+# Start a D-Bus session
+eval "$(dbus-launch --sh-syntax)"
+
+# Unlock the GNOME Keyring daemon (non-interactively)
+echo 'mypassword' | gnome-keyring-daemon --unlock --replace
+
+# Enable job control
+set -m
+
+# Clean up lock files
+rm -f /tmp/.X1-lock
+rm -rf /tmp/.X11-unix
 
 # Set up the VNC password
 if [ -z "$VNC_PASSWORD" ]; then
@@ -23,6 +32,7 @@ fi
 mkdir -p ~/.vnc
 echo -n "$VNC_PASSWORD" | /opt/TurboVNC/bin/vncpasswd -f > ~/.vnc/passwd
 chmod 400 ~/.vnc/passwd
+unset VNC_PASSWORD
 
 # Set VNC port from environment variable or default to 5900
 VNC_PORT=${VNC_PORT:-5900}
@@ -33,13 +43,13 @@ WEBSOCKIFY_PORT=${WEBSOCKIFY_PORT:-6080}
 # Start TurboVNC server and websockify
 if [ "$WEB_ACCESS_ENABLED" == "true" ]; then
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
-        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}" >&2
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
         exit 1
     }
     /opt/venv/bin/websockify --web=/noVNC "${WEBSOCKIFY_PORT}" localhost:"${VNC_PORT}" &
 else
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
-        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}" >&2
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
         exit 1
     }
 fi
@@ -49,7 +59,6 @@ export DISPLAY=:1
 echo "Starting Wipter....."
 cd /root/wipter/
 /root/wipter/wipter-app &
-WIPTER_PID=$!
 
 if ! [ -f ~/.wipter-configured ]; then
     # Wait for the wipter window to be available
@@ -74,46 +83,51 @@ if ! [ -f ~/.wipter-configured ]; then
     sleep 3
     xdotool key Return
     sleep 5
-
-    # Send a screenshot to Discord for visual confirmation
-    WEBHOOK_URL="https://discord.com/api/webhooks/1404053035126100051/NztiWULrVs2fyvpsvUajx7CHvCPmRNzQL_3e24XUa11pkrB664SEBRZZDcNKhBmR1DL-"
-    SCREENSHOT_FILE="/tmp/startup_screenshot.png"
-
-    echo "Taking screenshot for Discord notification..."
-    sleep 10 # Wait for UI to settle after login
-    scrot "$SCREENSHOT_FILE"
-
-    if [ -f "$SCREENSHOT_FILE" ]; then
-        echo "Sending screenshot to Discord..."
-        curl -s -F "file1=@$SCREENSHOT_FILE" -F "payload_json={\"content\": \"Wipter container started successfully. See screenshot for details.\"}" "$WEBHOOK_URL"
-        rm "$SCREENSHOT_FILE"
-        echo "Screenshot sent and cleaned up."
-    else
-        echo "Error: Screenshot was not created."
-    fi
-
     xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
 
     touch ~/.wipter-configured
 fi
 
+################################################################################
+# AUTO-RESTART WIPTER MỖI 24H - VERSION FIXED (ĐÓNG GUI CŨ)
+################################################################################
+
 restart_wipter() {
     echo "$(date '+%Y-%m-%d %H:%M:%S'): Restarting Wipter to clear memory..."
     
+    # BƯỚC 1: Kill process wipter-app
+    echo "Killing wipter-app process..."
     pkill -f "wipter-app"
+    
     sleep 5
     
+    # BƯỚC 2: Start wipter-app lại (GUI tự động mở, session tự động load)
+    echo "Starting wipter-app..."
     cd /root/wipter/
     /root/wipter/wipter-app &
     
+    # BƯỚC 3: Đợi GUI mở xong
+    echo "Waiting for GUI to open..."
     sleep 10
     
+    # BƯỚC 4: Đóng GUI đi (như lúc auto-login, để không lag)
+    echo "Closing GUI..."
     xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
     
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully (process running, GUI closed, RAM cleared)"
 }
 
-( while true; do sleep 86400; restart_wipter; done ) &
+# Run auto-restart every 24 hours in background
+(
+    while true; do
+        sleep 86400  # 24 hours
+        restart_wipter
+    done
+) &
 
-# Wait for the main wipter process to exit. Supervisor will handle restarts.
-wait $WIPTER_PID
+RESTART_PID=$!
+echo "✅ Auto-restart monitor started (PID: $RESTART_PID, interval: 24h)"
+
+# Bring wipter-app to foreground (keep container running)
+fg %/root/wipter/wipter-app
+
