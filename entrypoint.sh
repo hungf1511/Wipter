@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+SUPERVISOR_CONFIG="/etc/supervisor/conf.d/supervisord.conf"
 
 ################################################################################
 # SING-BOX PROXY SETUP (Based on proxy-sdk)
@@ -52,7 +54,7 @@ EOF
 else
   echo "No proxy details provided. Skipping sing-box setup."
   # If no proxy, just start supervisor and exit
-  exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+  exec /usr/bin/supervisord -c "$SUPERVISOR_CONFIG"
 fi
 
 ################################################################################
@@ -60,11 +62,24 @@ fi
 ################################################################################
 
 # Start supervisor in the background to manage all services
-/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+/usr/bin/supervisord -c "$SUPERVISOR_CONFIG" &
 SUPERVISOR_PID=$!
 
-# Use supervisorctl to start sing-box
-supervisorctl start sing-box
+wait_for_supervisor() {
+  for i in $(seq 1 10); do
+    if supervisorctl -c "$SUPERVISOR_CONFIG" status >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Supervisor did not become ready in time."
+  exit 1
+}
+
+wait_for_supervisor
+
+# Use supervisorctl to start sing-box once supervisor is ready
+supervisorctl -c "$SUPERVISOR_CONFIG" start sing-box
 
 echo "Waiting for tun0 interface..."
 COUNT=0
@@ -73,7 +88,7 @@ while ! ip addr show tun0 >/dev/null 2>&1; do
   COUNT=$((COUNT + 1))
   if [ "$COUNT" -gt 15 ]; then
     echo "tun0 did not appear after 15 seconds. sing-box may have failed."
-    supervisorctl status
+    supervisorctl -c "$SUPERVISOR_CONFIG" status
     cat /var/log/supervisor/sing-box*.log || true
     exit 1
   fi
