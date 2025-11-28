@@ -36,7 +36,7 @@ if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
   ],
   "route": {"rules": [
     {"protocol": "dns", "outbound": "direct"},
-    {"domain_is": ["${PROXY_HOST}"], "outbound": "direct"},
+    {"domain": ["${PROXY_HOST}"], "outbound": "direct"},
     {"inbound": ["tun-in"], "outbound": "proxy-out"}
   ]}
 }
