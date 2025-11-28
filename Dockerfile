@@ -42,8 +42,12 @@ RUN wget -q -O /tmp/sing-box.tar.gz "https://github.com/SagerNet/sing-box/releas
     chmod +x /usr/local/bin/sing-box && \
     rm -rf /tmp/sing-box*
 
-# Download and install Wipter
-RUN wget -q -O /tmp/wipter-app.tar.gz "https://provider-assets.wipter.com/latest/linux/${TARGETARCH}/wipter-app-${TARGETARCH}.tar.gz" && \
+# Download the wipter package based on architecture
+RUN case "${TARGETARCH}" in \
+      amd64) wget -q -O /tmp/wipter-app.tar.gz https://provider-assets.wipter.com/latest/linux/x64/wipter-app-x64.tar.gz ;; \
+      arm64) wget -q -O /tmp/wipter-app.tar.gz https://provider-assets.wipter.com/latest/linux/arm64/wipter-app-arm64.tar.gz ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
     mkdir -p /root/wipter && \
     tar -xzf /tmp/wipter-app.tar.gz -C /root/wipter --strip-components=1 && \
     rm /tmp/wipter-app.tar.gz
