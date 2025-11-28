@@ -17,9 +17,6 @@ eval "$(dbus-launch --sh-syntax)"
 # Unlock the GNOME Keyring daemon (non-interactively)
 echo 'mypassword' | gnome-keyring-daemon --unlock --replace
 
-# Enable job control
-set -m
-
 # Clean up lock files
 rm -f /tmp/.X1-lock
 rm -rf /tmp/.X11-unix
@@ -56,9 +53,16 @@ fi
 
 export DISPLAY=:1
 
-echo "Starting Wipter....."
-cd /root/wipter/
-/root/wipter/wipter-app &
+start_wipter_app() {
+    echo "Starting Wipter....."
+    cd /root/wipter/
+    /root/wipter/wipter-app &
+    WIPTER_PID=$!
+    export WIPTER_PID
+    echo "Wipter started with PID ${WIPTER_PID}"
+}
+
+start_wipter_app
 
 if ! [ -f ~/.wipter-configured ]; then
     # Wait for the wipter window to be available
@@ -103,8 +107,7 @@ restart_wipter() {
     
     # BƯỚC 2: Start wipter-app lại (GUI tự động mở, session tự động load)
     echo "Starting wipter-app..."
-    cd /root/wipter/
-    /root/wipter/wipter-app &
+    start_wipter_app
     
     # BƯỚC 3: Đợi GUI mở xong
     echo "Waiting for GUI to open..."
@@ -128,6 +131,24 @@ restart_wipter() {
 RESTART_PID=$!
 echo "✅ Auto-restart monitor started (PID: $RESTART_PID, interval: 24h)"
 
-# Bring wipter-app to foreground (keep container running)
-fg %/root/wipter/wipter-app
+monitor_wipter() {
+    while true; do
+        CURRENT_PID="$WIPTER_PID"
+        if [ -z "$CURRENT_PID" ]; then
+            echo "No Wipter PID found, exiting."
+            exit 1
+        fi
+
+        wait "$CURRENT_PID"
+        EXIT_CODE=$?
+
+        if [ "$CURRENT_PID" = "$WIPTER_PID" ]; then
+            echo "Wipter process ${CURRENT_PID} exited with code ${EXIT_CODE}"
+            exit "$EXIT_CODE"
+        fi
+        # If PID changed (e.g., due to scheduled restart), loop to wait on the new one
+    done
+}
+
+monitor_wipter
 
