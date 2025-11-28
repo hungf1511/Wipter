@@ -1,7 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-SUPERVISOR_CONFIG="/etc/supervisor/conf.d/supervisord.conf"
+SUPERVISOR_PRIMARY_CONFIG="/etc/supervisor/supervisord.conf"
+SUPERVISOR_FALLBACK_CONFIG="/etc/supervisor/conf.d/supervisord.conf"
+SUPERVISOR_CONFIG="$SUPERVISOR_PRIMARY_CONFIG"
+SUPERVISOR_SOCKET="/var/run/supervisor.sock"
+
+if [ ! -f "$SUPERVISOR_CONFIG" ] && [ -f "$SUPERVISOR_FALLBACK_CONFIG" ]; then
+  SUPERVISOR_CONFIG="$SUPERVISOR_FALLBACK_CONFIG"
+fi
 
 ################################################################################
 # SING-BOX PROXY SETUP (Based on proxy-sdk)
@@ -66,13 +73,16 @@ fi
 SUPERVISOR_PID=$!
 
 wait_for_supervisor() {
-  for i in $(seq 1 10); do
-    if supervisorctl -c "$SUPERVISOR_CONFIG" status >/dev/null 2>&1; then
-      return 0
+  for i in $(seq 1 20); do
+    if [ -S "$SUPERVISOR_SOCKET" ]; then
+      if supervisorctl -c "$SUPERVISOR_CONFIG" status >/dev/null 2>&1; then
+        return 0
+      fi
     fi
     sleep 1
   done
   echo "Supervisor did not become ready in time."
+  supervisorctl -c "$SUPERVISOR_CONFIG" status || true
   exit 1
 }
 

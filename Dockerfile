@@ -56,7 +56,8 @@ RUN case "${TARGETARCH}" in \
 COPY entrypoint.sh /app/entrypoint.sh
 COPY start.sh /app/start.sh
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-RUN dos2unix /app/start.sh /app/entrypoint.sh && chmod +x /app/start.sh /app/entrypoint.sh
+RUN cp /etc/supervisor/conf.d/supervisord.conf /etc/supervisor/supervisord.conf && \
+    dos2unix /app/start.sh /app/entrypoint.sh && chmod +x /app/start.sh /app/entrypoint.sh
 
 # Default environment variables
 ENV PROXY_TYPE="http"
