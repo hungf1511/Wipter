@@ -11,12 +11,6 @@ if [ -z "$WIPTER_PASSWORD" ]; then
     exit 1
 fi
 
-# Start a D-Bus session
-eval "$(dbus-launch --sh-syntax)"
-
-# Unlock the GNOME Keyring daemon (non-interactively)
-echo 'mypassword' | gnome-keyring-daemon --unlock --replace
-
 # Clean up any old VNC sessions and lock files
 /opt/TurboVNC/bin/vncserver -kill :1 >/dev/null 2>&1 || true
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1

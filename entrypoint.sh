@@ -2,7 +2,7 @@
 set -e
 
 ################################################################################
-# SING-BOX PROXY SETUP
+# SING-BOX PROXY SETUP (Based on proxy-sdk)
 ################################################################################
 
 # Generate sing-box config only if proxy details are provided
@@ -15,10 +15,11 @@ if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
 
   cat > /app/sing-box.json <<EOF
 {
-  "log": {"level": "info"},
+  "log": {"level": "info", "timestamp": true},
   "dns": {
     "servers": [
       {
+        "tag": "google-dns",
         "address": "8.8.8.8",
         "detour": "direct"
       }
@@ -44,40 +45,58 @@ if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
   ],
   "route": {"rules": [
     {"protocol": "dns", "outbound": "direct"},
-    {"domain": ["${PROXY_HOST}"], "outbound": "direct"},
     {"inbound": ["tun-in"], "outbound": "proxy-out"}
   ]}
 }
 EOF
-
-  # Start sing-box in the background
-  /usr/local/bin/sing-box run -c /app/sing-box.json & 
-
-  echo "Waiting for tun0 interface..."
-  COUNT=0
-  while ! ip addr show tun0 >/dev/null 2>&1; do
-    sleep 1
-    COUNT=$((COUNT + 1))
-    if [ "$COUNT" -gt 20 ]; then
-      echo "Error: tun0 did not appear after 20 seconds. sing-box may have failed." >&2
-      exit 1
-    fi
-  done
-  echo "tun0 interface is up."
-
-  # Manual routing configuration
-  echo "Configuring network routes to use proxy..."
-  ip route del default || true
-  ip route add default dev tun0
-  echo "Network routing configured."
 else
   echo "No proxy details provided. Skipping sing-box setup."
+  # If no proxy, just start supervisor and exit
+  exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
 fi
 
 ################################################################################
-# START SUPERVISOR
+# START SUPERVISOR & CONFIGURE NETWORK
 ################################################################################
 
-echo "Starting supervisor..."
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+# Start supervisor in the background to manage all services
+/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+SUPERVISOR_PID=$!
 
+# Use supervisorctl to start sing-box
+supervisorctl start sing-box
+
+echo "Waiting for tun0 interface..."
+COUNT=0
+while ! ip addr show tun0 >/dev/null 2>&1; do
+  sleep 1
+  COUNT=$((COUNT + 1))
+  if [ "$COUNT" -gt 15 ]; then
+    echo "tun0 did not appear after 15 seconds. sing-box may have failed."
+    supervisorctl status
+    cat /var/log/supervisor/sing-box*.log || true
+    exit 1
+  fi
+done
+echo "tun0 interface is up."
+
+# Configure routing based on proxy-sdk logic
+OLD_GATEWAY=$(ip route | grep default | awk '{print $3}')
+if [ -n "$OLD_GATEWAY" ]; then
+  echo "Configuring route for proxy host $PROXY_HOST via $OLD_GATEWAY"
+  ip route add "$PROXY_HOST" via "$OLD_GATEWAY"
+  echo "Configuring route for DNS server 8.8.8.8 via $OLD_GATEWAY"
+  ip route add 8.8.8.8 via "$OLD_GATEWAY" || true
+fi
+
+# Force delete the default route and add the new one
+ip route del default || true
+ip route add default dev tun0 metric 50
+
+echo "Routing configured. Final routing table:"
+ip route
+
+echo "Entrypoint setup complete. Services are running."
+
+# Wait for supervisor to exit
+wait $SUPERVISOR_PID
