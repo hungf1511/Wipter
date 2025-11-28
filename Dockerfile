@@ -1,19 +1,21 @@
 FROM docker.io/ubuntu:latest
 
+ARG SING_BOX_VERSION=1.8.0
+ARG TARGETARCH
 
-# Install essential packages, including full D-Bus, X11, keytar dependencies, and dos2unix
+# Install essential packages, including full D-Bus, X11, keytar dependencies, supervisor, networking tools, and dos2unix
 RUN apt-get -y update && apt-get -y --no-install-recommends --no-install-suggests install \
     wget tini xdotool gpg openbox ca-certificates \
     python3-pip python3-venv \
-    git \
+    git supervisor \
     # D-Bus, GNOME Keyring, and keytar dependencies
     dbus dbus-x11 gnome-keyring libsecret-1-0 libsecret-1-dev \
     # Node.js and build tools for keytar
     nodejs npm build-essential \
     # dos2unix for line ending conversion
     dos2unix \
-    # Tools for wipter package download
-    binutils && \
+    # Tools for wipter package download and networking
+    binutils iproute2 iptables && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create /tmp/.X11-unix and /run/dbus directories
@@ -42,7 +44,6 @@ RUN wget -q -O- https://packagecloud.io/dcommander/turbovnc/gpgkey | gpg --dearm
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Download the wipter package based on architecture
-ARG TARGETARCH
 RUN case "${TARGETARCH}" in \
       amd64) wget -q -O /tmp/wipter-app.tar.gz https://provider-assets.wipter.com/latest/linux/x64/wipter-app-x64.tar.gz ;; \
       arm64) wget -q -O /tmp/wipter-app.tar.gz https://provider-assets.wipter.com/latest/linux/arm64/wipter-app-arm64.tar.gz ;; \
@@ -58,6 +59,13 @@ RUN apt-get -y update && \
     apt-get -y --fix-broken --no-install-recommends --no-install-suggests install && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install sing-box
+RUN wget -q -O /tmp/sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-${TARGETARCH}.tar.gz" && \
+    tar -xzf /tmp/sing-box.tar.gz -C /tmp && \
+    mv "/tmp/sing-box-${SING_BOX_VERSION}-linux-${TARGETARCH}/sing-box" /usr/local/bin/sing-box && \
+    chmod +x /usr/local/bin/sing-box && \
+    rm -rf /tmp/sing-box*
+
 # Copy the start script
 COPY start.sh /root/
 
@@ -68,5 +76,17 @@ RUN dos2unix /root/start.sh && \
 # Expose the necessary ports
 EXPOSE 5900 6080
 
-# Use tini as the entrypoint to manage processes
-ENTRYPOINT ["tini", "-s", "/root/start.sh"]
+# Copy sing-box supervisor/entrypoint assets
+RUN mkdir -p /app
+COPY entrypoint.sh /app/entrypoint.sh
+COPY supervisord.conf /etc/supervisor/conf.d/wipter.conf
+RUN chmod +x /app/entrypoint.sh
+
+# Default environment variables for proxy configuration
+ENV PROXY_TYPE="" \
+    PROXY_HOST="" \
+    PROXY_PORT="" \
+    PROXY_USER="" \
+    PROXY_PASS=""
+
+ENTRYPOINT ["/app/entrypoint.sh"]
