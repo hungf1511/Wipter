@@ -5,9 +5,9 @@ ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential packages, including sing-box dependencies
+# Install essential packages, including supervisor and sing-box dependencies
 RUN apt-get -y update && apt-get -y --no-install-recommends --no-install-suggests install \
-    wget tini xdotool gpg openbox ca-certificates \
+    wget tini xdotool gpg openbox ca-certificates supervisor \
     python3-pip python3-venv git \
     dbus dbus-x11 gnome-keyring libsecret-1-0 libsecret-1-dev \
     nodejs npm build-essential dos2unix binutils \
@@ -16,7 +16,7 @@ RUN apt-get -y update && apt-get -y --no-install-recommends --no-install-suggest
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories
-RUN mkdir -p /tmp/.X11-unix /run/dbus /root/.local/share/keyrings /root/.cache /app && \
+RUN mkdir -p /tmp/.X11-unix /run/dbus /root/.local/share/keyrings /root/.cache /app /var/log/supervisor && \
     chmod 1777 /tmp/.X11-unix && \
     chmod 755 /run/dbus
 
@@ -52,9 +52,11 @@ RUN case "${TARGETARCH}" in \
     tar -xzf /tmp/wipter-app.tar.gz -C /root/wipter --strip-components=1 && \
     rm /tmp/wipter-app.tar.gz
 
-# Copy the start script
+# Copy scripts and configs
+COPY entrypoint.sh /app/entrypoint.sh
 COPY start.sh /app/start.sh
-RUN dos2unix /app/start.sh && chmod +x /app/start.sh
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+RUN dos2unix /app/start.sh /app/entrypoint.sh && chmod +x /app/start.sh /app/entrypoint.sh
 
 # Default environment variables
 ENV PROXY_TYPE="http"
@@ -70,4 +72,4 @@ ENV VNC_PASSWORD=""
 EXPOSE 5900 6080
 
 WORKDIR /app
-ENTRYPOINT ["tini", "--", "/app/start.sh"]
+ENTRYPOINT ["tini", "--", "/app/entrypoint.sh"]
