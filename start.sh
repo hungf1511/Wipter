@@ -79,6 +79,13 @@ if [ -z "$WIPTER_PASSWORD" ]; then
     exit 1
 fi
 
+# Start the D-Bus system daemon to fix connection errors
+echo "Initializing D-Bus system bus..."
+dbus-uuidgen --ensure
+mkdir -p /run/dbus
+/usr/bin/dbus-daemon --system --fork
+sleep 1 # Give it a moment to initialize
+
 # Start a D-Bus session
 eval "$(dbus-launch --sh-syntax)"
 
