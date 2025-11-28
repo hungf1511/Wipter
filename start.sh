@@ -1,76 +1,89 @@
 #!/bin/bash
-set -e
 
-# Check for required environment variables
-if [ -z "$WIPTER_EMAIL" ] || [ -z "$WIPTER_PASSWORD" ]; then
-    echo "Error: WIPTER_EMAIL and WIPTER_PASSWORD environment variables must be set."
+# Check if WIPTER_EMAIL and WIPTER_PASSWORD are set
+if [ -z "$WIPTER_EMAIL" ]; then
+    echo "Error: WIPTER_EMAIL environment variable is not set."
     exit 1
 fi
 
-# Start a D-Bus session required for GNOME Keyring
-echo "Starting D-Bus session..."
-eval "$(dbus-launch --sh-syntax)"
-
-# Start and unlock the GNOME Keyring daemon
-# The password here is arbitrary and used only to unlock the daemon non-interactively.
-echo "Starting GNOME Keyring daemon..."
-echo "dummy-password" | gnome-keyring-daemon --unlock --replace
-
-# Clean up any stale VNC lock files
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-
-# Set up the VNC password (using a fixed password for simplicity)
-mkdir -p /root/.vnc
-echo "wipter" | /opt/TurboVNC/bin/vncpasswd -f > /root/.vnc/passwd
-chmod 600 /root/.vnc/passwd
-
-# Start the TurboVNC server with Openbox window manager
-# This creates a virtual display :1
-/opt/TurboVNC/bin/vncserver :1 -geometry 1280x800 -rfbauth /root/.vnc/passwd -wm openbox
-
-# Set the DISPLAY environment variable so GUI apps know where to open
-export DISPLAY=:1
-
-# Start the Wipter application in the background
-echo "Starting Wipter application..."
-/root/wipter/wipter-app &
-
-# Automated login using xdotool
-# This only runs if a marker file doesn't exist
-if ! [ -f /root/.wipter-configured ]; then
-    echo "Performing first-time login automation..."
-    
-    # Wait for the Wipter window to appear
-    for i in {1..30}; do
-        if xdotool search --name "Wipter" &>/dev/null; then
-            echo "Wipter window found."
-            break
-        fi
-        echo "Waiting for Wipter window... ($i/30)"
-        sleep 2
-    done
-
-    WINDOW_ID=$(xdotool search --name "Wipter" | tail -1)
-    if [ -n "$WINDOW_ID" ]; then
-        xdotool windowfocus "$WINDOW_ID"
-        sleep 3
-        xdotool type "$WIPTER_EMAIL"
-        sleep 3
-        xdotool key Tab
-        sleep 3
-        xdotool type "$WIPTER_PASSWORD"
-        sleep 3
-        xdotool key Return
-        echo "Login credentials submitted."
-        
-        # Create a marker file to prevent this from running again
-        touch /root/.wipter-configured
-    else
-        echo "Warning: Could not find Wipter window to automate login."
-    fi
+if [ -z "$WIPTER_PASSWORD" ]; then
+    echo "Error: WIPTER_PASSWORD environment variable is not set."
+    exit 1
 fi
 
-# Keep the script running to monitor the main process
-echo "Wipter setup complete. VNC server is running on port 5901."
-# Wait for any background process to exit, which keeps the script alive
-wait -n
+# Start a D-Bus session
+eval "$(dbus-launch --sh-syntax)"
+
+# Unlock the GNOME Keyring daemon (non-interactively)
+# Replace 'mypassword' with a secure password or use an environment variable
+echo 'mypassword' | gnome-keyring-daemon --unlock --replace
+
+# Enable job control
+set -m
+
+# These files could be left-over if the container is not shut down cleanly. We just remove it since we should
+# only be here during container startup.
+rm -f /tmp/.X1-lock
+rm -r /tmp/.X11-unix
+
+# Set up the VNC password
+if [ -z "$VNC_PASSWORD" ]; then
+    echo "VNC_PASSWORD environment variable is not set. Using a random password. You"
+    echo "will not be able to access the VNC server."
+    VNC_PASSWORD="$(tr -dc '[:alpha:]' < /dev/urandom | fold -w "${1:-8}" | head -n1)"
+fi
+mkdir ~/.vnc
+echo -n "$VNC_PASSWORD" | /opt/TurboVNC/bin/vncpasswd -f > ~/.vnc/passwd
+chmod 400 ~/.vnc/passwd
+unset VNC_PASSWORD
+
+# Set VNC port from environment variable or default to 5900
+VNC_PORT=${VNC_PORT:-5900}
+
+# Set Websockify port from environment variable or default to 6080
+WEBSOCKIFY_PORT=${WEBSOCKIFY_PORT:-6080}
+
+# Start TurboVNC server and websockify based on WEB_ACCESS_ENABLED
+if [ "$WEB_ACCESS_ENABLED" == "true" ]; then
+    /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
+        exit 1
+    }
+    /opt/venv/bin/websockify --web=/noVNC "${WEBSOCKIFY_PORT}" localhost:"${VNC_PORT}" &
+else
+    /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
+        exit 1
+    }
+fi
+
+export DISPLAY=:1
+
+echo "Starting Wipter....."
+# Start openbox as a minimal window manager
+cd /root/wipter/
+/root/wipter/wipter-app &
+
+# Wait for the wipter window to be available
+while [[ "$(xdotool search --name Wipter| wc -l)" -lt 3 ]]; do
+    sleep 10
+done
+
+# Handle wipter login
+xdotool search --name Wipter | tail -n1 | xargs xdotool windowfocus
+sleep 5
+xdotool key Tab
+sleep 3
+xdotool key Tab
+sleep 3
+xdotool key Tab
+sleep 3
+xdotool type "$WIPTER_EMAIL"
+sleep 3
+xdotool key Tab
+sleep 3
+xdotool type "$WIPTER_PASSWORD"
+sleep 3
+xdotool key Return
+
+fg %/root/wipter/wipter-app
