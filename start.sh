@@ -1,73 +1,5 @@
 #!/bin/bash
 
-################################################################################
-# SING-BOX PROXY SETUP (INTEGRATED)
-################################################################################
-
-# Generate sing-box config only if proxy details are provided
-if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
-  echo "Proxy details found. Generating sing-box config..."
-  AUTH_BLOCK=""
-  if [ -n "${PROXY_USER:-}" ]; then
-    AUTH_BLOCK=$(printf ',\n      "username": "%s",\n      "password": "%s"' "$PROXY_USER" "${PROXY_PASS:-}")
-  fi
-
-  cat > /app/sing-box.json <<EOF
-{
-  "log": {"level": "info"},
-  "inbounds": [{
-    "type": "tun",
-    "tag": "tun-in",
-    "interface_name": "tun0",
-    "inet4_address": "198.18.0.1/15",
-    "auto_route": false,
-    "strict_route": false,
-    "stack": "system"
-  }],
-  "outbounds": [
-    {
-      "type": "${PROXY_TYPE:-http}",
-      "tag": "proxy-out",
-      "server": "${PROXY_HOST}",
-      "server_port": ${PROXY_PORT}${AUTH_BLOCK}
-    },
-    {"type": "direct", "tag": "direct"}
-  ],
-  "route": {"rules": [
-    {"protocol": "dns", "outbound": "direct"},
-    {"domain_is": ["${PROXY_HOST}"], "outbound": "direct"},
-    {"inbound": ["tun-in"], "outbound": "proxy-out"}
-  ]}
-}
-EOF
-
-  # Start sing-box in the background
-  /usr/local/bin/sing-box run -c /app/sing-box.json & 
-
-  echo "Waiting for tun0 interface..."
-  COUNT=0
-  while ! ip addr show tun0 >/dev/null 2>&1; do
-    sleep 1
-    COUNT=$((COUNT + 1))
-    if [ "$COUNT" -gt 20 ]; then
-      echo "Error: tun0 did not appear after 20 seconds. sing-box may have failed." >&2
-      exit 1
-    fi
-  done
-  echo "tun0 interface is up."
-
-  # Manual routing configuration
-  echo "Configuring network routes to use proxy..."
-  ip route add default dev tun0
-  echo "Network routing configured."
-else
-  echo "No proxy details provided. Skipping sing-box setup."
-fi
-
-################################################################################
-# ORIGINAL USER SCRIPT (UNCHANGED)
-################################################################################
-
 # Check if WIPTER_EMAIL and WIPTER_PASSWORD are set
 if [ -z "$WIPTER_EMAIL" ]; then
     echo "Error: WIPTER_EMAIL environment variable is not set."
@@ -79,21 +11,11 @@ if [ -z "$WIPTER_PASSWORD" ]; then
     exit 1
 fi
 
-# Start the D-Bus system daemon to fix connection errors
-echo "Initializing D-Bus system bus..."
-dbus-uuidgen --ensure
-mkdir -p /run/dbus
-/usr/bin/dbus-daemon --system --fork
-sleep 1 # Give it a moment to initialize
-
 # Start a D-Bus session
 eval "$(dbus-launch --sh-syntax)"
 
 # Unlock the GNOME Keyring daemon (non-interactively)
 echo 'mypassword' | gnome-keyring-daemon --unlock --replace
-
-# Enable job control
-set -m
 
 # Clean up lock files
 rm -f /tmp/.X1-lock
@@ -133,6 +55,7 @@ export DISPLAY=:1
 echo "Starting Wipter....."
 cd /root/wipter/
 /root/wipter/wipter-app &
+WIPTER_PID=$!
 
 if ! [ -f ~/.wipter-configured ]; then
     # Wait for the wipter window to be available
@@ -165,38 +88,20 @@ fi
 restart_wipter() {
     echo "$(date '+%Y-%m-%d %H:%M:%S'): Restarting Wipter to clear memory..."
     
-    # BƯỚC 1: Kill process wipter-app
-    echo "Killing wipter-app process..."
     pkill -f "wipter-app"
-    
     sleep 5
     
-    # BƯỚC 2: Start wipter-app lại (GUI tự động mở, session tự động load)
-    echo "Starting wipter-app..."
     cd /root/wipter/
     /root/wipter/wipter-app &
     
-    # BƯỚC 3: Đợi GUI mở xong
-    echo "Waiting for GUI to open..."
     sleep 10
     
-    # BƯỚC 4: Đóng GUI đi (như lúc auto-login, để không lag)
-    echo "Closing GUI..."
     xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
     
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully (process running, GUI closed, RAM cleared)"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully"
 }
 
-# Run auto-restart every 24 hours in background
-(
-    while true; do
-        sleep 86400  # 24 hours
-        restart_wipter
-    done
-) &
+( while true; do sleep 86400; restart_wipter; done ) &
 
-RESTART_PID=$!
-echo "✅ Auto-restart monitor started (PID: $RESTART_PID, interval: 24h)"
-
-# Bring wipter-app to foreground (keep container running)
-fg %/root/wipter/wipter-app
+# Wait for the main wipter process to exit. Supervisor will handle restarts.
+wait $WIPTER_PID
