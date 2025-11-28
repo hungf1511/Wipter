@@ -16,6 +16,14 @@ if [ -n "${PROXY_HOST:-}" ] && [ -n "${PROXY_PORT:-}" ]; then
   cat > /app/sing-box.json <<EOF
 {
   "log": {"level": "info"},
+  "dns": {
+    "servers": [
+      {
+        "address": "8.8.8.8",
+        "detour": "direct"
+      }
+    ]
+  },
   "inbounds": [{
     "type": "tun",
     "tag": "tun-in",

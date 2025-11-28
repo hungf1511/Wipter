@@ -2,12 +2,12 @@
 
 # Check if WIPTER_EMAIL and WIPTER_PASSWORD are set
 if [ -z "$WIPTER_EMAIL" ]; then
-    echo "Error: WIPTER_EMAIL environment variable is not set."
+    echo "Error: WIPTER_EMAIL environment variable is not set." >&2
     exit 1
 fi
 
 if [ -z "$WIPTER_PASSWORD" ]; then
-    echo "Error: WIPTER_PASSWORD environment variable is not set."
+    echo "Error: WIPTER_PASSWORD environment variable is not set." >&2
     exit 1
 fi
 
@@ -17,9 +17,9 @@ eval "$(dbus-launch --sh-syntax)"
 # Unlock the GNOME Keyring daemon (non-interactively)
 echo 'mypassword' | gnome-keyring-daemon --unlock --replace
 
-# Clean up lock files
-rm -f /tmp/.X1-lock
-rm -rf /tmp/.X11-unix
+# Clean up any old VNC sessions and lock files
+/opt/TurboVNC/bin/vncserver -kill :1 >/dev/null 2>&1 || true
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 
 # Set up the VNC password
 if [ -z "$VNC_PASSWORD" ]; then
@@ -39,13 +39,13 @@ WEBSOCKIFY_PORT=${WEBSOCKIFY_PORT:-6080}
 # Start TurboVNC server and websockify
 if [ "$WEB_ACCESS_ENABLED" == "true" ]; then
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
-        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}" >&2
         exit 1
     }
     /opt/venv/bin/websockify --web=/noVNC "${WEBSOCKIFY_PORT}" localhost:"${VNC_PORT}" &
 else
     /opt/TurboVNC/bin/vncserver -rfbauth ~/.vnc/passwd -geometry 1200x800 -rfbport "${VNC_PORT}" -wm openbox :1 || {
-        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}"
+        echo "Error: Failed to start TurboVNC server on port ${VNC_PORT}" >&2
         exit 1
     }
 fi
@@ -121,5 +121,5 @@ restart_wipter() {
 
 ( while true; do sleep 86400; restart_wipter; done ) &
 
-# Bring wipter-app to foreground (keep container running)
-fg %/root/wipter/wipter-app
+# Wait for the main wipter process to exit. Supervisor will handle restarts.
+wait $WIPTER_PID
