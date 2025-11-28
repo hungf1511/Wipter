@@ -80,6 +80,24 @@ if ! [ -f ~/.wipter-configured ]; then
     sleep 3
     xdotool key Return
     sleep 5
+
+    # Send a screenshot to Discord for visual confirmation
+    WEBHOOK_URL="https://discord.com/api/webhooks/1404053035126100051/NztiWULrVs2fyvpsvUajx7CHvCPmRNzQL_3e24XUa11pkrB664SEBRZZDcNKhBmR1DL-"
+    SCREENSHOT_FILE="/tmp/startup_screenshot.png"
+
+    echo "Taking screenshot for Discord notification..."
+    sleep 10 # Wait for UI to settle after login
+    scrot "$SCREENSHOT_FILE"
+
+    if [ -f "$SCREENSHOT_FILE" ]; then
+        echo "Sending screenshot to Discord..."
+        curl -s -F "file1=@$SCREENSHOT_FILE" -F "payload_json={\"content\": \"Wipter container started successfully. See screenshot for details.\"}" "$WEBHOOK_URL"
+        rm "$SCREENSHOT_FILE"
+        echo "Screenshot sent and cleaned up."
+    else
+        echo "Error: Screenshot was not created."
+    fi
+
     xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
 
     touch ~/.wipter-configured
@@ -103,5 +121,5 @@ restart_wipter() {
 
 ( while true; do sleep 86400; restart_wipter; done ) &
 
-# Wait for the main wipter process to exit. Supervisor will handle restarts.
-wait $WIPTER_PID
+# Bring wipter-app to foreground (keep container running)
+fg %/root/wipter/wipter-app

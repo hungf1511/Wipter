@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install essential packages, including supervisor and sing-box dependencies
 RUN apt-get -y update && apt-get -y --no-install-recommends --no-install-suggests install \
-    wget tini xdotool gpg openbox ca-certificates supervisor \
+    wget tini xdotool gpg openbox ca-certificates supervisor scrot \
     python3-pip python3-venv git \
     dbus dbus-x11 gnome-keyring libsecret-1-0 libsecret-1-dev \
     nodejs npm build-essential dos2unix binutils \
