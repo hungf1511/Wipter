@@ -88,46 +88,6 @@ if ! [ -f ~/.wipter-configured ]; then
     touch ~/.wipter-configured
 fi
 
-################################################################################
-# AUTO-RESTART WIPTER MỖI 24H - VERSION FIXED (ĐÓNG GUI CŨ)
-################################################################################
-
-restart_wipter() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Restarting Wipter to clear memory..."
-    
-    # BƯỚC 1: Kill process wipter-app
-    echo "Killing wipter-app process..."
-    pkill -f "wipter-app"
-    
-    sleep 5
-    
-    # BƯỚC 2: Start wipter-app lại (GUI tự động mở, session tự động load)
-    echo "Starting wipter-app..."
-    cd /root/wipter/
-    /root/wipter/wipter-app &
-    
-    # BƯỚC 3: Đợi GUI mở xong
-    echo "Waiting for GUI to open..."
-    sleep 10
-    
-    # BƯỚC 4: Đóng GUI đi (như lúc auto-login, để không lag)
-    echo "Closing GUI..."
-    xdotool search --name Wipter | tail -n1 | xargs xdotool windowclose
-    
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Wipter restarted successfully (process running, GUI closed, RAM cleared)"
-}
-
-# Run auto-restart every 24 hours in background
-(
-    while true; do
-        sleep 86400  # 24 hours
-        restart_wipter
-    done
-) &
-
-RESTART_PID=$!
-echo "✅ Auto-restart monitor started (PID: $RESTART_PID, interval: 24h)"
-
 # Bring wipter-app to foreground (keep container running)
 fg %/root/wipter/wipter-app
 
